@@ -1,0 +1,89 @@
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+  }
+
+  parameters {
+    choice(name: 'ACTION', choices: ['plan', 'up', 'down', 'status'], description: 'Terraform lab action')
+    string(name: 'AWS_REGION', defaultValue: 'ap-southeast-1', description: 'AWS region')
+    string(name: 'CLUSTER_NAME', defaultValue: 'java-cicd-dev-eks', description: 'EKS cluster name')
+    string(name: 'EXPECTED_ACCOUNT_ID', defaultValue: 'REPLACE_ME_ACCOUNT_ID', description: 'Safety check AWS account ID')
+    string(name: 'GIT_BRANCH', defaultValue: 'main', description: 'Infra repo branch')
+  }
+
+  environment {
+    PATH = "/usr/local/bin:/usr/bin:/bin:${env.PATH}"
+    TF_IN_AUTOMATION = "true"
+  }
+
+  stages {
+    stage('Precheck Tools') {
+      steps {
+        sh '''
+          set -eux
+          whoami
+          pwd
+          which git
+          which aws
+          which terraform
+          which kubectl || true
+          which helm || true
+          aws --version
+          terraform version
+        '''
+      }
+    }
+
+    stage('Checkout Infra Repo') {
+      steps {
+        checkout([
+          $class: 'GitSCM',
+          branches: [[name: "*/${params.GIT_BRANCH}"]],
+          userRemoteConfigs: [[
+            url: 'GIT_REPO_URL',
+            credentialsId: 'JENKINS_CREDENTIALS_ID'
+          ]]
+        ])
+      }
+    }
+
+    stage('AWS Identity Check') {
+      steps {
+        sh '''
+          set -eux
+          aws sts get-caller-identity
+        '''
+      }
+    }
+
+    stage('Run Lab Action') {
+      environment {
+        AWS_REGION = "${params.AWS_REGION}"
+        CLUSTER_NAME = "${params.CLUSTER_NAME}"
+        EXPECTED_ACCOUNT_ID = "${params.EXPECTED_ACCOUNT_ID}"
+      }
+      steps {
+        sh '''
+          set -eux
+          chmod +x ./lab.sh
+          ./lab.sh "${ACTION}"
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      archiveArtifacts artifacts: 'environments/dev/tfplan', allowEmptyArchive: true
+    }
+    success {
+      echo "Infra action ${params.ACTION} completed."
+    }
+    failure {
+      echo "Infra action ${params.ACTION} failed. Check logs."
+    }
+  }
+}
