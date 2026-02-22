@@ -10,7 +10,7 @@ pipeline {
     choice(name: 'ACTION', choices: ['plan', 'up', 'down', 'status'], description: 'Terraform lab action')
     string(name: 'AWS_REGION', defaultValue: 'ap-southeast-1', description: 'AWS region')
     string(name: 'CLUSTER_NAME', defaultValue: 'java-cicd-dev-eks', description: 'EKS cluster name')
-    string(name: 'EXPECTED_ACCOUNT_ID', defaultValue: 'REPLACE_ME_ACCOUNT_ID', description: 'Safety check AWS account ID')
+    string(name: 'EXPECTED_ACCOUNT_ID', defaultValue: '173649228068', description: 'Safety check AWS account ID')
     string(name: 'GIT_BRANCH', defaultValue: 'main', description: 'Infra repo branch')
   }
 
@@ -37,16 +37,15 @@ pipeline {
       }
     }
 
-    stage('Checkout Infra Repo') {
+    stage('Show Workspace') {
       steps {
-        checkout([
-          $class: 'GitSCM',
-          branches: [[name: "*/${params.GIT_BRANCH}"]],
-          userRemoteConfigs: [[
-            url: 'GIT_REPO_URL',
-            credentialsId: 'JENKINS_CREDENTIALS_ID'
-          ]]
-        ])
+        sh '''
+          set -eux
+          git branch --show-current || true
+          git log -1 --oneline || true
+          ls -la
+          ls -la environments/dev
+        '''
       }
     }
 
